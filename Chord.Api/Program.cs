@@ -9,8 +9,8 @@ public class Program
     {
         var address = IPAddress.Parse(args[0]);
         var port = int.Parse(args[1]);
-        var bootstrapNodeAddress = args.Length > 2 ? args[2] : null;
-        var bootstrapNodePort = args.Length > 3 ? args[3] : throw new ArgumentException("Bootstrap node port not set");
+        var bootstrapNodeAddress = args.Length > 2 ? IPAddress.Parse(args[2]) : null;
+        var bootstrapNodePort = args.Length > 3 ? int.Parse(args[3]) : throw new ArgumentException("Bootstrap node port not set");
 
         var capacity = 20;
 
@@ -39,7 +39,7 @@ public class Program
 
             if (bootstrapNodeAddress != null)
             {
-                var bootstrapNodeId = ChordNetworkNode.ComputeNodeId(bootstrapNodeAddress, bootstrapNodePort);
+                var bootstrapNodeId = ChordNetworkNode.ComputeNodeId(bootstrapNodeAddress, bootstrapNodePort, capacity);
                 ChordNetworkNode.Join(bootstrapNodeId);
             }
             else
@@ -48,7 +48,6 @@ public class Program
             }
         });
 
-        // 6. «¿œ”— ¿≈Ã ‚Ò∏ ‚ÏÂÒÚÂ
         app.Run();
     }
 }
