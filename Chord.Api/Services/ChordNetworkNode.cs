@@ -72,8 +72,7 @@ public class ChordNetworkNode
 
         if (prevPred is not null && prevPred.Id != LocalNode.Id)
         {
-            await ChordClient.NotifyAsync(IPAddress.Parse(prevPred.Address), prevPred.Port,
-                new ChordClient.NetworkNodeDto(LocalNode.Id, Address.ToString(), Port));
+            await ChordClient.NotifyAsync(IPAddress.Parse(prevPred.Address), prevPred.Port,new ChordClient.NetworkNodeDto(LocalNode.Id, Address.ToString(), Port));
         }
     }
 
@@ -101,5 +100,31 @@ public class ChordNetworkNode
         if (a == b) return true;
         if (a < b) return a < x && x <= b;
         return x > a || x <= b;
+    }
+
+    private readonly Dictionary<int, ChordClient.NetworkNodeDto> _fingers = new();
+
+    public async Task BuildFingersAsync()
+    {
+        for (int i = 0; i < _capacity; i++)
+        {
+            int start = (LocalNode.Id + (1 << i)) & ((1 << _capacity) - 1);
+            var succ = await ChordClient.FindSuccessorAsync(IPAddress.Parse(Successor.Address), Successor.Port, start, 5);
+
+            if (succ != null) _fingers[i] = succ;
+        }
+    }
+
+    public ChordClient.NetworkNodeDto PickNextHop(int key)
+    {
+        for (int i = _capacity - 1; i >= 0; i--)
+        {
+            if (_fingers.TryGetValue(i, out var f))
+            {
+                if (InIntervalOpenClosed(f.Id, Id, key))
+                    return f;
+            }
+        }
+        return Successor; 
     }
 }

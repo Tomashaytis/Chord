@@ -22,23 +22,22 @@ public class ChordController(ChordNetworkNode networkNode) : ControllerBase
 
         bool InOC(int x, int a, int b)
         {
-            if (a == b) return true;              
+            if (a == b) return true;
             if (a < b) return a < x && x <= b;
-            return x > a || x <= b;                  
+            return x > a || x <= b;
         }
 
         if (InOC(key, selfId, succ.Id) || succ.Id == selfId)
-            return Ok(succ);                        
+            return Ok(succ);
 
-        
-        var next = await NetworkNode.ChordClient.FindSuccessorAsync(
-                       IPAddress.Parse(succ.Address), succ.Port, key, 5);
+        var nextHop = NetworkNode.PickNextHop(key);
 
-        if (next is null) return StatusCode(StatusCodes.Status503ServiceUnavailable);
+        var next = await NetworkNode.ChordClient.FindSuccessorAsync(IPAddress.Parse(nextHop.Address), nextHop.Port, key, 5);
 
+        if (next is null) 
+            return StatusCode(StatusCodes.Status503ServiceUnavailable);
         return Ok(next);
     }
-
 
     [HttpPost("notify")]
     public IActionResult Notify([FromBody] ChordClient.NetworkNodeDto notifier)
