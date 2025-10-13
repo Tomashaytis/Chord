@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Chord.Domain.Entities;
 using Chord.Api.Services;
+using System.Net;
 
 namespace Chord.Api.Controllers;
 
@@ -8,38 +8,46 @@ namespace Chord.Api.Controllers;
 [Route("chord")]
 public class ChordController(ChordNetworkNode networkNode) : ControllerBase
 {
-    public ChordNetworkNode NetworkNode { get; private set; } = networkNode;
+    public ChordNetworkNode NetworkNode { get; } = networkNode;
 
     [HttpGet("ping")]
     public IActionResult Ping() => Ok("alive");
 
+
     [HttpGet("find-successor")]
-    public ActionResult<ChordNode> FindSuccessor([FromQuery] int key)
+    public async Task<ActionResult<ChordClient.NetworkNodeDto>> FindSuccessor([FromQuery] int key)
     {
-        var successor = NetworkNode.LocalNode.FindSuccessor(key);
-        return Ok(successor);
+        var selfId = NetworkNode.Id;
+        var succ = NetworkNode.Successor;
+
+        bool InOC(int x, int a, int b)
+        {
+            if (a == b) return true;              
+            if (a < b) return a < x && x <= b;
+            return x > a || x <= b;                  
+        }
+
+        if (InOC(key, selfId, succ.Id) || succ.Id == selfId)
+            return Ok(succ);                        
+
+        
+        var next = await NetworkNode.ChordClient.FindSuccessorAsync(
+                       IPAddress.Parse(succ.Address), succ.Port, key, 5);
+
+        if (next is null) return StatusCode(StatusCodes.Status503ServiceUnavailable);
+
+        return Ok(next);
     }
 
+
     [HttpPost("notify")]
-    public IActionResult Notify([FromBody] ChordNode notifier)
+    public IActionResult Notify([FromBody] ChordClient.NetworkNodeDto notifier)
     {
-        NetworkNode.LocalNode.Notify(notifier);
-        return Ok();
+        var previousPred = NetworkNode.Predecessor;
+        NetworkNode.Notify(notifier);
+        return Ok(new { previousPredecessor = previousPred });
     }
 
     [HttpGet("info")]
-    public ActionResult<object> GetNodeInfo()
-    {
-        return new
-        {
-            NetworkNode.Id,
-            Predecessor = NetworkNode.LocalNode.Predecessor?.Id,
-            Successor = NetworkNode.LocalNode.Successor.Id,
-            Fingers = NetworkNode.LocalNode.Fingers.Select(f => new {
-                f.Start,
-                f.Interval,
-                NodeId = f.Node.Id
-            })
-        };
-    }
+    public ActionResult<object> GetNodeInfo() => Ok(NetworkNode.GetInfo());
 }

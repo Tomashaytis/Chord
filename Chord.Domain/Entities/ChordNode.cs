@@ -61,7 +61,7 @@ public class ChordNode
 
     public ChordNode ClosestPrecedingFinger(int keyId)
     {
-        for (int i = Capacity; i >= 0; i--)
+        for (int i = Capacity - 1; i >= 0; i--)
             if (IsKeyInRange(Fingers[i].Node.Id, Id, keyId, inclusiveEnd: false))
                 return Fingers[i].Node;
 
@@ -114,10 +114,24 @@ public class ChordNode
         return true;
     }
 
-    public static bool IsKeyInRange(int id, int start, int end, bool inclusiveStart = false, bool inclusiveEnd = true)
+    public static bool IsKeyInRange(
+        int id, int start, int end,
+        bool inclusiveStart = false, bool inclusiveEnd = true)
     {
-        bool first = inclusiveStart ? start <= id : start < id;
-        bool second = inclusiveEnd ? id <= end : id < end;
-        return first && second;
+        if (start == end) return true;
+
+        if (start < end)
+        {
+            bool geStart = inclusiveStart ? id >= start : id > start;
+            bool leEnd   = inclusiveEnd   ? id <= end   : id < end;
+            return geStart && leEnd;
+        }
+        else
+        {
+            bool rightSide = inclusiveStart ? id >= start : id > start;
+            bool leftSide  = inclusiveEnd   ? id <= end   : id < end;
+            return rightSide || leftSide;
+        }
     }
+
 }

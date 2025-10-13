@@ -1,40 +1,67 @@
 ﻿using System.Net;
-using System.Net.Sockets;
-using Chord.Domain.Entities;
+using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace Chord.Api.Services;
 
 public class ChordClient(HttpClient httpClient)
 {
-    public HttpClient HttpClient { get; private set; } = httpClient;
+    public HttpClient HttpClient { get; } = httpClient;
 
-    public async Task<bool> PingNodeAsync(IPAddress ipAddress, int port, double timeout = 5)
+    public record NetworkNodeDto(int Id, string Address, int Port);
+
+    public static string FormatHost(IPAddress ipAddress) =>
+        ipAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? $"[{ipAddress}]" : ipAddress.ToString();
+
+    public async Task<NetworkNodeDto?> GetInfoAsync(IPAddress ip, int port, double timeoutSeconds = 5)
     {
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeout));
-
-            string host = FormatHost(ipAddress);
-
-            var response = await HttpClient.GetAsync($"http://{host}:{port}/chord/ping", cts.Token);
-
-            return response.IsSuccessStatusCode;
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+            var url = $"http://{FormatHost(ip)}:{port}/chord/info";
+            var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            return await HttpClient.GetFromJsonAsync<NetworkNodeDto>(url, opts, cts.Token);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch
         {
-            return false;
+            return null;
         }
     }
 
-    public async Task<ChordNode?> FindSuccessorAsync(IPAddress ipAddress, int port, int key)
+    public record NotifyResponse(NetworkNodeDto? PreviousPredecessor);
+
+    public async Task<NetworkNodeDto?> NotifyAsync(IPAddress ip, int port, NetworkNodeDto notifier, double timeoutSeconds = 5)
     {
-        string host = FormatHost(ipAddress);
-        var response = await HttpClient.GetAsync($"http://{host}:{port}/chord/find-successor?key={key}");
-        return await response.Content.ReadFromJsonAsync<ChordNode>();
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+            var url = $"http://{FormatHost(ip)}:{port}/chord/notify";
+
+            var resp = await HttpClient.PostAsJsonAsync(url, notifier, cts.Token);
+            if (!resp.IsSuccessStatusCode) return null;
+
+            var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var body = await resp.Content.ReadFromJsonAsync<NotifyResponse>(opts, cts.Token);
+            return body?.PreviousPredecessor;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
-    public static string FormatHost(IPAddress ipAddress)
+    public async Task<NetworkNodeDto?> FindSuccessorAsync(IPAddress ip, int port, int key, double timeoutSeconds = 5)
     {
-        return ipAddress.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{ipAddress}]" : ipAddress.ToString();
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+            var url = $"http://{FormatHost(ip)}:{port}/chord/find-successor?key={key}";
+            var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            return await HttpClient.GetFromJsonAsync<NetworkNodeDto>(url, opts, cts.Token);
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
