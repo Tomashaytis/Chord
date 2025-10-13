@@ -77,8 +77,24 @@ public class Program
                     node.Create();
                     Console.WriteLine($"[BOOT] Created ring for {me}");
                 }
+
+           
+                _ = Task.Run(async () =>
+                {
+                    while (true)
+                    {
+                        try
+                        {
+                            await node.StabilizeOnceAsync();
+                            await node.BuildFingersAsync();
+                        }
+                        catch { }
+                        await Task.Delay(20000);
+                    }
+                });
             });
         });
+
 
 
         await app.RunAsync();

@@ -18,14 +18,32 @@ public class ChordClient(HttpClient httpClient)
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
-            var url = $"http://{FormatHost(ip)}:{port}/chord/info";
+            var url = $"http://{FormatHost(ip)}:{port}/chord/info?mode=basic"; 
             var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             return await HttpClient.GetFromJsonAsync<NetworkNodeDto>(url, opts, cts.Token);
         }
-        catch
+        catch { return null; }
+    }
+    public async Task<NetworkNodeDto?> GetPredecessorAsync(IPAddress ip, int port, double timeoutSeconds = 5)
+    {
+        try
         {
-            return null;
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+            var url = $"http://{FormatHost(ip)}:{port}/chord/info";
+            using var resp = await HttpClient.GetAsync(url, cts.Token);
+            if (!resp.IsSuccessStatusCode) return null;
+
+            using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync(cts.Token), cancellationToken: cts.Token);
+            if (!doc.RootElement.TryGetProperty("predecessor", out var pp) || pp.ValueKind != JsonValueKind.Object)
+                return null;
+
+            int id = pp.TryGetProperty("id", out var i1) && i1.TryGetInt32(out var iv) ? iv : -1;
+            string? addr = pp.TryGetProperty("address", out var a1) ? a1.GetString() : null;
+            int prt = pp.TryGetProperty("port", out var p1) && p1.TryGetInt32(out var pv) ? pv : -1;
+
+            return (id >= 0 && addr is not null && prt >= 0) ? new NetworkNodeDto(id, addr, prt) : null;
         }
+        catch { return null; }
     }
 
     public record NotifyResponse(NetworkNodeDto? PreviousPredecessor);
@@ -64,4 +82,41 @@ public class ChordClient(HttpClient httpClient)
             return null;
         }
     }
+
+    public async Task<bool> SetPredecessorAsync(IPAddress ip, int port, NetworkNodeDto? pred, double timeoutSeconds = 5)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+            var url = $"http://{FormatHost(ip)}:{port}/chord/set-predecessor";
+            var resp = await HttpClient.PostAsJsonAsync(url, pred, cts.Token);
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
+    public async Task<bool> SetSuccessorAsync(IPAddress ip, int port, NetworkNodeDto succ, double timeoutSeconds = 5)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+            var url = $"http://{FormatHost(ip)}:{port}/chord/set-successor";
+            var resp = await HttpClient.PostAsJsonAsync(url, succ, cts.Token);
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
+    public async Task<bool> StabilizeAsync(IPAddress ip, int port, double timeoutSeconds = 5)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+            var url = $"http://{FormatHost(ip)}:{port}/chord/stabilize";
+            var resp = await HttpClient.PostAsync(url, content: null, cts.Token);
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
 }

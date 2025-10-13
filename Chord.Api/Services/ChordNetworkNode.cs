@@ -18,6 +18,54 @@ public class ChordNetworkNode
     public ChordClient.NetworkNodeDto? Predecessor { get; private set; }
     public ChordClient.NetworkNodeDto Successor { get; private set; }
 
+    public void SetPredecessor(ChordClient.NetworkNodeDto? pred)
+    {
+        Predecessor = pred;
+    }
+
+    public void SetSuccessor(ChordClient.NetworkNodeDto succ)
+    {
+        Successor = succ;
+    }
+
+    public async Task LeaveAsync()
+    {
+        var pred = Predecessor;
+        var succ = Successor;
+
+        if (succ.Id == Id && pred is null)
+        {
+            Predecessor = null;
+            Successor = new ChordClient.NetworkNodeDto(Id, Address.ToString(), Port);
+            _fingers.Clear();
+            return;
+        }
+
+        if (pred is not null && succ is not null && succ.Id != Id)
+        {
+            await ChordClient.SetSuccessorAsync(IPAddress.Parse(pred.Address), pred.Port, succ);
+            await ChordClient.SetPredecessorAsync(IPAddress.Parse(succ.Address), succ.Port, pred);
+
+            await ChordClient.StabilizeAsync(IPAddress.Parse(pred.Address), pred.Port);
+            await ChordClient.StabilizeAsync(IPAddress.Parse(succ.Address), succ.Port);
+        }
+        else if (pred is not null)
+        {
+            await ChordClient.SetSuccessorAsync(IPAddress.Parse(pred.Address), pred.Port,
+                new ChordClient.NetworkNodeDto(Id, Address.ToString(), Port));
+            await ChordClient.StabilizeAsync(IPAddress.Parse(pred.Address), pred.Port);
+        }
+        else if (succ is not null && succ.Id != Id)
+        {
+            await ChordClient.SetPredecessorAsync(IPAddress.Parse(succ.Address), succ.Port, null);
+            await ChordClient.StabilizeAsync(IPAddress.Parse(succ.Address), succ.Port);
+        }
+
+        Predecessor = null;
+        Successor = new ChordClient.NetworkNodeDto(Id, Address.ToString(), Port);
+        _fingers.Clear();
+    }
+
     public ChordNetworkNode(int capacity, ChordClient chordClient, IPAddress address, int port)
     {
         _capacity = capacity;
@@ -86,15 +134,17 @@ public class ChordNetworkNode
             Successor = notifier;
     }
 
-    public object GetInfo() => new
+    public object GetInfo(int? key = null)
     {
-        id = LocalNode.Id,
-        address = Address.ToString(),
-        port = Port,
-        predecessor = Predecessor,
-        successor = Successor
-    };
-
+        return new
+        {
+            id = LocalNode.Id,
+            address = Address.ToString(),
+            port = Port,
+            predecessor = Predecessor,
+            successor = Successor
+        };
+    }
     private static bool InIntervalOpenClosed(int x, int a, int b)
     {
         if (a == b) return true;
@@ -127,4 +177,25 @@ public class ChordNetworkNode
         }
         return Successor; 
     }
+
+    public async Task StabilizeOnceAsync()
+    {
+        var succ = Successor;
+        if (succ.Id == Id) return; 
+
+        var x = await ChordClient.GetPredecessorAsync(IPAddress.Parse(succ.Address), succ.Port, 5);
+        if (x is not null && InIntervalOpenClosed(x.Id, Id, succ.Id))
+        {
+            Successor = x; 
+        }
+
+ 
+        await ChordClient.NotifyAsync(IPAddress.Parse(Successor.Address), Successor.Port,
+            new ChordClient.NetworkNodeDto(LocalNode.Id, Address.ToString(), Port));
+
+    
+        await BuildFingersAsync();
+    }
+
+
 }

@@ -49,4 +49,38 @@ public class ChordController(ChordNetworkNode networkNode) : ControllerBase
 
     [HttpGet("info")]
     public ActionResult<object> GetNodeInfo() => Ok(NetworkNode.GetInfo());
+
+
+    [HttpPost("stabilize")]
+    public async Task<IActionResult> Stabilize()
+    {
+        await NetworkNode.StabilizeOnceAsync();
+        return Ok(NetworkNode.GetInfo());
+    }
+
+
+    [HttpPost("leave")]
+    public async Task<IActionResult> Leave()
+    {
+        await NetworkNode.LeaveAsync();
+        return Ok(NetworkNode.GetInfo()); 
+    }
+
+    [HttpPost("set-predecessor")]
+    public IActionResult SetPredecessor([FromBody] ChordClient.NetworkNodeDto? pred)
+    {
+        NetworkNode.SetPredecessor(pred);
+        return Ok();
+    }
+
+
+    [HttpPost("set-successor")]
+    public IActionResult SetSuccessor([FromBody] ChordClient.NetworkNodeDto succ)
+    {
+        NetworkNode.SetSuccessor(succ);
+        return Ok();
+    }
+
+
+
 }
