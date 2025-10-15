@@ -81,6 +81,12 @@ public class ChordController(ChordNetworkNode networkNode) : ControllerBase
         return Ok();
     }
 
-
+    [HttpPost("splice/{id:int}")]
+public async Task<IActionResult> SpliceById([FromRoute] int id)
+{
+    var ok = await NetworkNode.SpliceOutByIdAsync(id);
+    if (!ok) return StatusCode(StatusCodes.Status503ServiceUnavailable, "splice failed");
+    return Ok(new { spliced = id });
+}
 
 }

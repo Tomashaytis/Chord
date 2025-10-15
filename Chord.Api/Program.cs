@@ -21,6 +21,7 @@ public class Program
         var builder = WebApplication.CreateBuilder(args);
         builder.WebHost.UseUrls($"http://{ChordClient.FormatHost(bindAddress)}:{bindPort}");
 
+
         var handler = new SocketsHttpHandler
         {
             UseProxy = false,
@@ -46,16 +47,31 @@ public class Program
         var app = builder.Build();
         app.MapControllers();
 
+        app.Lifetime.ApplicationStopping.Register(() =>
+        {
+            try
+            {
+                var node = app.Services.GetRequiredService<ChordNetworkNode>();
+                node.LeaveAsync().GetAwaiter().GetResult();
+                Console.WriteLine($"[SHUTDOWN] Node {node.Id} left the ring gracefully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SHUTDOWN] Leave failed: {ex.Message}");
+            }
+        });
+
         app.Lifetime.ApplicationStarted.Register(() =>
         {
             var node = app.Services.GetRequiredService<ChordNetworkNode>();
+            var stopToken = app.Lifetime.ApplicationStopping;
 
             _ = Task.Run(async () =>
             {
                 var me = node.Id;
                 Console.WriteLine($"[BOOT] Node {me} at {node.Address}:{node.Port} started");
 
-                await Task.Delay(500);
+                await Task.Delay(500, stopToken);
 
                 if (hasBootstrap && bootstrapAddress is not null)
                 {
@@ -78,24 +94,61 @@ public class Program
                     Console.WriteLine($"[BOOT] Created ring for {me}");
                 }
 
-           
                 _ = Task.Run(async () =>
                 {
-                    while (true)
+                    while (!stopToken.IsCancellationRequested)
                     {
                         try
                         {
                             await node.StabilizeOnceAsync();
                             await node.BuildFingersAsync();
                         }
-                        catch { }
-                        await Task.Delay(20000);
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[STABILIZE] {ex.Message}");
+                        }
+
+                        try
+                        {
+                            await Task.Delay(5000, stopToken);
+                        }
+                        catch (OperationCanceledException) { break; }
                     }
-                });
+                }, stopToken);
+
+                _ = Task.Run(async () =>
+                {
+                    var client = app.Services.GetRequiredService<ChordClient>();
+                    while (!stopToken.IsCancellationRequested)
+                    {
+                        try
+                        {
+                            var succ = node.Successor;
+
+                            if (succ != null && succ.Id != node.Id)
+                            {
+                                var ok = await client.PingNodeAsync(IPAddress.Parse(succ.Address), succ.Port, 2);
+                                if (!ok)
+                                {
+                                    Console.WriteLine($"[SPLICE] Successor {succ.Id} unreachable → splice");
+                                    await node.SpliceOutByIdAsync(succ.Id);
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[SPLICE] {ex.Message}");
+                        }
+
+                        try
+                        {
+                            await Task.Delay(2000, stopToken);
+                        }
+                        catch (OperationCanceledException) { break; }
+                    }
+                }, stopToken);
             });
         });
-
-
 
         await app.RunAsync();
     }

@@ -119,4 +119,20 @@ public class ChordClient(HttpClient httpClient)
         catch { return false; }
     }
 
+    public async Task<bool> PingNodeAsync(IPAddress ip, int port, int timeoutSeconds = 2)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+            var url = $"http://{FormatHost(ip)}:{port}/chord/ping";
+            using var resp = await HttpClient.GetAsync(url, cts.Token);
+            return resp.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+
 }
